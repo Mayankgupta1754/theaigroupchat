@@ -1,0 +1,73 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>THE AI GROUP CHAT</title>
+    <link rel="preconnect" href="https://fonts.googleapis.com" />
+    <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+    <link
+      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Oxanium:wght@500;700;800&display=swap"
+      rel="stylesheet"
+    />
+    <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+  </head>
+  <body>
+    <div class="crt" aria-hidden="true"></div>
+
+    <div class="frame">
+      <header class="topbar">
+        <div class="brand">
+          <span class="led"></span>
+          <div class="brand-name">THE AI GROUP CHAT</div>
+        </div>
+        <div class="meta">
+          <span class="pip">GPT</span>
+          <span class="pip">CLAUDE</span>
+          <span class="pip">GEMINI</span>
+          <span class="pip">DEEPSEEK</span>
+          <span id="status-chip" class="chip">IDLE</span>
+        </div>
+      </header>
+
+      <main>
+        <section class="composer" id="composer">
+          <h1>Ask a question</h1>
+          <form id="mcq-form">
+            <textarea
+              id="question"
+              required
+              spellcheck="false"
+              placeholder="Which data structure follows FIFO?
+
+A. Stack
+B. Queue
+C. Tree
+D. Graph"
+            ></textarea>
+            <div class="row">
+              <button type="submit" id="ask-btn">ASK</button>
+            </div>
+          </form>
+        </section>
+
+        <section class="session hidden" id="session">
+          <aside class="pane">
+            <div class="pane-h">Question</div>
+            <pre id="question-view"></pre>
+            <div class="consensus-box" id="consensus-box">
+              <span class="muted">—</span>
+            </div>
+            <button type="button" class="again-inline hidden" id="again-btn">AGAIN</button>
+          </aside>
+          <section class="pane chat-wrap">
+            <div class="pane-h">Answers</div>
+            <div class="chat" id="chat"></div>
+          </section>
+        </section>
+      </main>
+    </div>
+
+    <script src="{{ url_for('static', filename='script.js') }}"></script>
+  </body>
+</html>
