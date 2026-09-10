@@ -36,14 +36,14 @@ app = Flask(
 
 # Central model map — swap OpenRouter IDs here.
 MODELS: dict[str, str] = {
-    # "GPT": "openai/gpt-4o-mini",
-    # "Claude": "anthropic/claude-haiku-4.5",
-    # "Gemini": "google/gemini-2.5-flash",
-    # "DeepSeek": "deepseek/deepseek-chat",
-    "GPT": "openai/gpt-6-astra",
-    "Claude": "anthropic/claude-fable-5.1",
-    "Gemini": "google/gemini-3.8-flash",
-    "DeepSeek": "deepseek/deepseek-v4-flash-0731",
+    "GPT": "openai/gpt-4o-mini",
+    "Claude": "anthropic/claude-haiku-4.5",
+    "Gemini": "google/gemini-2.5-flash",
+    "DeepSeek": "deepseek/deepseek-chat",
+    # "GPT": "openai/gpt-6-astra",
+    # "Claude": "anthropic/claude-fable-5.1",
+    # "Gemini": "google/gemini-3.8-flash",
+    # "DeepSeek": "deepseek/deepseek-v4-flash-0731",
 }
 
 JUDGE_NAME = "HOST"
