@@ -2,76 +2,52 @@
 <html lang="en">
   <head>
     <meta charset="UTF-8" />
-    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0, viewport-fit=cover" />
     <title>The AI Group Chat</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,560;9..144,640&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
+    <link
+      rel="stylesheet"
+      href="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.css"
+    />
   </head>
   <body>
-    <header class="topbar">
+    <header class="toolbar">
       <div class="brand">
-        <span class="mark" aria-hidden="true"></span>
-        <div>
-          <div class="brand-name">The AI Group Chat</div>
-          <div class="brand-sub">Independent panel · host review</div>
-        </div>
+        <h1 class="brand-name">The AI Group Chat</h1>
+        <p class="credit">Made by Mayank Gupta</p>
       </div>
-      <div class="meta">
-        <span class="pip">GPT</span>
-        <span class="pip">Claude</span>
-        <span class="pip">Gemini</span>
-        <span class="pip">DeepSeek</span>
-        <span id="status-chip" class="chip">Ready</span>
+      <div class="mode-toggle" role="radiogroup" aria-label="Response mode">
+        <label class="mode-opt">
+          <input type="radio" name="mode" value="answer" checked />
+          <span>Answer</span>
+        </label>
+        <label class="mode-opt">
+          <input type="radio" name="mode" value="solve" />
+          <span>Solve</span>
+        </label>
       </div>
+      <p class="meta">
+        <span class="models">GPT · Claude · Gemini · DeepSeek</span>
+        <span id="status-chip" class="chip" data-state="ready">Ready</span>
+      </p>
     </header>
 
     <main>
-      <section class="composer" id="composer">
-        <p class="eyebrow">Exam panel</p>
-        <h1>Ask, upload, or capture a question.</h1>
-        <p class="lede">
-          Four models answer on their own. Use Answer only for a letter or value, or Solve for a full method.
-        </p>
-
-        <form id="mcq-form" class="card">
-          <div class="mode-toggle" role="radiogroup" aria-label="Response mode">
-            <label class="mode-opt">
-              <input type="radio" name="mode" value="answer" checked />
-              <span class="mode-copy">
-                <strong>Answer only</strong>
-                <small>A, B, C, D or a one-line value</small>
-              </span>
-            </label>
-            <label class="mode-opt">
-              <input type="radio" name="mode" value="solve" />
-              <span class="mode-copy">
-                <strong>Solve</strong>
-                <small>Step-by-step method and final answer</small>
-              </span>
-            </label>
-          </div>
-
-          <label class="field-label" for="question">Question</label>
-          <textarea
-            id="question"
-            spellcheck="true"
-            placeholder="Paste one question, or several. Numericals are fine.
-
-A particle starts from rest…
-
-A. 2 m/s
-B. 4 m/s
-C. 6 m/s
-D. 8 m/s"
-          ></textarea>
-
-          <div class="upload-row">
-            <div class="media-actions">
+      <section id="composer">
+        <form id="mcq-form">
+          <div class="editor">
+            <textarea
+              id="question"
+              spellcheck="true"
+              placeholder="Paste a question — or several. You can also attach a photo."
+            ></textarea>
+            <div class="statusbar">
               <div class="dropzone" id="dropzone">
                 <input
                   id="image-input"
@@ -79,25 +55,17 @@ D. 8 m/s"
                   accept="image/jpeg,image/png,image/webp,image/gif"
                   hidden
                 />
-                <div class="dropzone-copy" id="dropzone-copy">
-                  <strong>Upload a photo</strong>
-                  <span>JPG, PNG, or WEBP · up to 4 MB</span>
-                </div>
+                <div class="dropzone-copy" id="dropzone-copy">Attach photo</div>
                 <div class="preview hidden" id="image-preview">
                   <img id="preview-img" alt="Uploaded question" />
-                  <div class="preview-meta">
-                    <span id="preview-name">Photo attached</span>
-                    <button type="button" class="linkish" id="clear-image">Remove</button>
-                  </div>
+                  <span id="preview-name">Photo attached</span>
+                  <button type="button" class="linkish" id="clear-image">Remove</button>
                 </div>
               </div>
-              <button type="button" class="secondary" id="camera-btn">Use camera</button>
+              <button type="button" class="secondary" id="camera-btn">Camera</button>
+              <p class="hint" id="upload-hint">Images are transcribed before they go to the panel.</p>
+              <button type="submit" id="ask-btn">Run panel</button>
             </div>
-            <p class="hint" id="upload-hint">We’ll transcribe the image into the box above so you can edit it before asking.</p>
-          </div>
-
-          <div class="row">
-            <button type="submit" id="ask-btn">Ask the panel</button>
           </div>
         </form>
       </section>
@@ -106,14 +74,14 @@ D. 8 m/s"
         <aside class="pane">
           <div class="pane-h">Question</div>
           <div class="q-nav hidden" id="q-nav"></div>
-          <pre id="question-view"></pre>
+          <div id="question-view"></div>
           <div class="consensus-box" id="consensus-box">
-            <span class="muted">Waiting for the panel</span>
+            <span class="muted">Waiting</span>
           </div>
-          <button type="button" class="again-inline hidden" id="again-btn">Ask another</button>
+          <button type="button" class="again-inline hidden" id="again-btn">Back</button>
         </aside>
         <section class="pane chat-wrap">
-          <div class="pane-h">Panel answers</div>
+          <div class="pane-h">Panel</div>
           <div class="chat" id="chat"></div>
         </section>
       </section>
@@ -122,16 +90,18 @@ D. 8 m/s"
     <div class="modal hidden" id="camera-modal" role="dialog" aria-modal="true" aria-labelledby="camera-title">
       <div class="modal-card">
         <div class="modal-h">
-          <h2 id="camera-title">Live capture</h2>
+          <h2 id="camera-title">Camera</h2>
           <button type="button" class="linkish" id="camera-cancel">Close</button>
         </div>
         <video id="camera-video" autoplay playsinline muted></video>
-        <p class="hint" id="camera-hint">Point the camera at the question, then capture.</p>
+        <p class="hint" id="camera-hint">Hold still, then capture.</p>
         <div class="modal-actions">
-          <button type="button" id="shutter-btn">Capture photo</button>
+          <button type="button" id="shutter-btn">Capture</button>
         </div>
       </div>
     </div>
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/katex.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/katex@0.16.11/dist/contrib/auto-render.min.js"></script>
     <script src="{{ url_for('static', filename='script.js') }}"></script>
   </body>
 </html>

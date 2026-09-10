@@ -38,6 +38,7 @@ function selectedMode() {
 
 function setStatus(text) {
   statusChip.textContent = text;
+  statusChip.dataset.state = String(text).toLowerCase();
 }
 
 function setHint(text, isError = false) {
@@ -51,6 +52,116 @@ function escapeHtml(value) {
     .replace(/</g, "&lt;")
     .replace(/>/g, "&gt;")
     .replace(/"/g, "&quot;");
+}
+
+const MATH_CHUNK = /\$\$[\s\S]+?\$\$|\$(?:\\\$|[^$])+\$|\\\[[\s\S]+?\\\]|\\\([\s\S]+?\\\)/g;
+const KATEX_OPTS = {
+  delimiters: [
+    { left: "$$", right: "$$", display: true },
+    { left: "\\[", right: "\\]", display: true },
+    { left: "$", right: "$", display: false },
+    { left: "\\(", right: "\\)", display: false },
+  ],
+  throwOnError: false,
+  strict: "ignore",
+  ignoredTags: ["script", "noscript", "style", "textarea", "code"],
+};
+
+function takeBrace(src, start) {
+  if (src[start] !== "{") return start;
+  let depth = 0;
+  for (let i = start; i < src.length; i += 1) {
+    if (src[i] === "{") depth += 1;
+    else if (src[i] === "}") {
+      depth -= 1;
+      if (depth === 0) return i + 1;
+    }
+  }
+  return src.length;
+}
+
+function takeLatexExpr(src, start) {
+  if (src[start] !== "\\") return null;
+  const cmd = src.slice(start).match(/^\\[a-zA-Z]+/);
+  let end;
+  if (cmd) {
+    end = start + cmd[0].length;
+  } else if (start + 1 < src.length) {
+    end = start + 2;
+  } else {
+    return null;
+  }
+  if (src[end] === "[") {
+    const close = src.indexOf("]", end);
+    if (close >= 0) end = close + 1;
+  }
+  if ("()|.".includes(src[end] || "")) end += 1;
+  let groups = 0;
+  while (src[end] === "{" && groups < 4) {
+    end = takeBrace(src, end);
+    groups += 1;
+  }
+  while (src[end] === "^" || src[end] === "_") {
+    end += 1;
+    if (src[end] === "{") end = takeBrace(src, end);
+    else if (src[end] === "\\") {
+      const nested = takeLatexExpr(src, end);
+      end = nested || end + 1;
+    } else if (end < src.length) {
+      end += 1;
+    }
+  }
+  return end;
+}
+
+function wrapBareLine(line) {
+  let i = 0;
+  let out = "";
+  while (i < line.length) {
+    if (line[i] === "\\") {
+      const end = takeLatexExpr(line, i);
+      if (end && end > i + 1) {
+        out += `$${line.slice(i, end)}$`;
+        i = end;
+        continue;
+      }
+    }
+    out += line[i];
+    i += 1;
+  }
+  return out;
+}
+
+function wrapUndelimited(text) {
+  const src = String(text);
+  const pieces = [];
+  let last = 0;
+  src.replace(MATH_CHUNK, (chunk, offset) => {
+    pieces.push(wrapBareLine(src.slice(last, offset)));
+    pieces.push(chunk);
+    last = offset + chunk.length;
+    return chunk;
+  });
+  pieces.push(wrapBareLine(src.slice(last)));
+  return pieces.join("");
+}
+
+function formatMath(text) {
+  return escapeHtml(wrapUndelimited(text || ""));
+}
+
+function typeset(root) {
+  if (!root || typeof renderMathInElement !== "function") return;
+  try {
+    renderMathInElement(root, KATEX_OPTS);
+  } catch (error) {
+    console.warn("Math render skipped", error);
+  }
+}
+
+function setMathContent(el, text) {
+  el.innerHTML = formatMath(text || "");
+  typeset(el);
 }
 
 function addMessage(html, extraClass = "") {
@@ -85,14 +196,15 @@ function fillModelCard(index, model, mode) {
   const skipped = model.status === "skipped";
   card.classList.toggle("error", !ok && !skipped);
   card.classList.toggle("skipped", skipped);
-  const reason = escapeHtml(model.reason || "");
+  const reason = formatMath(model.reason || "");
   if (ok) {
     const body = mode === "solve" && model.reason
       ? `<div class="solution">${reason}</div>`
       : `<div class="why">${reason}</div>`;
     card.innerHTML = `<div class="msg-h"><span class="handle">${model.name}</span><span>${model.time}s</span></div>
-       <div class="answer">${escapeHtml(model.answer)}</div>
+       <div class="answer">${formatMath(model.answer)}</div>
        ${body}`;
+    typeset(card);
   } else if (skipped) {
     card.innerHTML = `<div class="msg-h"><span class="handle">${model.name}</span></div>
        <div class="answer">SKIP</div>
@@ -121,7 +233,7 @@ function renderNav(items, activeIndex) {
 
 async function playItem(result, mode) {
   renderThinking();
-  questionView.textContent = result.question || "";
+  setMathContent(questionView, result.question || "");
   const models = result.models || [];
   const ordered = [...models].sort((a, b) => (a.time || 0) - (b.time || 0));
 
@@ -137,13 +249,14 @@ async function playItem(result, mode) {
   const final = result.final_answer || result.reveal || "";
   const judgeReason = (result.judge && result.judge.reason) || "";
   const solution = mode === "solve" && judgeReason
-    ? `<div class="host-solution">${escapeHtml(judgeReason)}</div>`
+    ? `<div class="host-solution">${formatMath(judgeReason)}</div>`
     : "";
   consensusBox.innerHTML = final
-    ? `<div class="agree">${escapeHtml(String(final))}</div>
-       <div class="detail">${agree} / ${total}${mode === "answer" && judgeReason ? ` · ${escapeHtml(judgeReason)}` : ""}</div>
+    ? `<div class="agree">${formatMath(String(final))}</div>
+       <div class="detail">${agree} / ${total}${mode === "answer" && judgeReason ? ` · ${formatMath(judgeReason)}` : ""}</div>
        ${solution}`
     : `<div class="detail">No confident answer</div>${solution}`;
+  typeset(consensusBox);
   againBtn.classList.remove("hidden");
 }
 
@@ -340,7 +453,7 @@ form.addEventListener("submit", async (event) => {
     composer.classList.add("hidden");
     session.classList.remove("hidden");
     againBtn.classList.add("hidden");
-    questionView.textContent = question;
+    setMathContent(questionView, question);
     consensusBox.innerHTML = `<span class="muted">Waiting for the panel</span>`;
     qNav.classList.add("hidden");
     setStatus("Live");
