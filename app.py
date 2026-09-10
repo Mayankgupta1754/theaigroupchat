@@ -41,7 +41,7 @@ MODELS: dict[str, str] = {
     # "Gemini": "google/gemini-2.5-flash",
     # "DeepSeek": "deepseek/deepseek-chat",
     "GPT": "openai/gpt-6-astra",
-    "Claude": "anthropic/claude-fable-5.1:batch",
+    "Claude": "anthropic/claude-fable-5.1",
     "Gemini": "google/gemini-3.8-flash",
     "DeepSeek": "deepseek/deepseek-v4-flash-0731",
 }
