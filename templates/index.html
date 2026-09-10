@@ -3,71 +3,98 @@
   <head>
     <meta charset="UTF-8" />
     <meta name="viewport" content="width=device-width, initial-scale=1.0" />
-    <title>THE AI GROUP CHAT</title>
+    <title>The AI Group Chat</title>
     <link rel="preconnect" href="https://fonts.googleapis.com" />
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
     <link
-      href="https://fonts.googleapis.com/css2?family=IBM+Plex+Mono:wght@400;500;600&family=Oxanium:wght@500;700;800&display=swap"
+      href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,560;9..144,640&family=Plus+Jakarta+Sans:wght@400;500;600;700&display=swap"
       rel="stylesheet"
     />
     <link rel="stylesheet" href="{{ url_for('static', filename='style.css') }}" />
   </head>
   <body>
-    <div class="crt" aria-hidden="true"></div>
-
-    <div class="frame">
-      <header class="topbar">
-        <div class="brand">
-          <span class="led"></span>
-          <div class="brand-name">THE AI GROUP CHAT</div>
+    <header class="topbar">
+      <div class="brand">
+        <span class="mark" aria-hidden="true"></span>
+        <div>
+          <div class="brand-name">The AI Group Chat</div>
+          <div class="brand-sub">Independent panel · host review</div>
         </div>
-        <div class="meta">
-          <span class="pip">GPT</span>
-          <span class="pip">CLAUDE</span>
-          <span class="pip">GEMINI</span>
-          <span class="pip">DEEPSEEK</span>
-          <span id="status-chip" class="chip">IDLE</span>
-        </div>
-      </header>
+      </div>
+      <div class="meta">
+        <span class="pip">GPT</span>
+        <span class="pip">Claude</span>
+        <span class="pip">Gemini</span>
+        <span class="pip">DeepSeek</span>
+        <span id="status-chip" class="chip">Ready</span>
+      </div>
+    </header>
 
-      <main>
-        <section class="composer" id="composer">
-          <h1>Ask a question</h1>
-          <form id="mcq-form">
-            <textarea
-              id="question"
-              required
-              spellcheck="false"
-              placeholder="Which data structure follows FIFO?
+    <main>
+      <section class="composer" id="composer">
+        <p class="eyebrow">Multiple-choice solver</p>
+        <h1>Ask a question, or upload a photo of one.</h1>
+        <p class="lede">
+          Four models answer on their own. A host reviews the panel and returns a final choice.
+        </p>
+
+        <form id="mcq-form" class="card">
+          <label class="field-label" for="question">Question</label>
+          <textarea
+            id="question"
+            spellcheck="true"
+            placeholder="Which data structure follows FIFO?
 
 A. Stack
 B. Queue
 C. Tree
 D. Graph"
-            ></textarea>
-            <div class="row">
-              <button type="submit" id="ask-btn">ASK</button>
-            </div>
-          </form>
-        </section>
+          ></textarea>
 
-        <section class="session hidden" id="session">
-          <aside class="pane">
-            <div class="pane-h">Question</div>
-            <pre id="question-view"></pre>
-            <div class="consensus-box" id="consensus-box">
-              <span class="muted">—</span>
+          <div class="upload-row">
+            <div class="dropzone" id="dropzone">
+              <input
+                id="image-input"
+                type="file"
+                accept="image/jpeg,image/png,image/webp,image/gif"
+                hidden
+              />
+              <div class="dropzone-copy" id="dropzone-copy">
+                <strong>Upload a photo</strong>
+                <span>JPG, PNG, or WEBP · up to 4 MB</span>
+              </div>
+              <div class="preview hidden" id="image-preview">
+                <img id="preview-img" alt="Uploaded question" />
+                <div class="preview-meta">
+                  <span id="preview-name">Photo attached</span>
+                  <button type="button" class="linkish" id="clear-image">Remove</button>
+                </div>
+              </div>
             </div>
-            <button type="button" class="again-inline hidden" id="again-btn">AGAIN</button>
-          </aside>
-          <section class="pane chat-wrap">
-            <div class="pane-h">Answers</div>
-            <div class="chat" id="chat"></div>
-          </section>
-        </section>
-      </main>
-    </div>
+            <p class="hint" id="upload-hint">We’ll transcribe the image into the box above so you can edit it before asking.</p>
+          </div>
 
+          <div class="row">
+            <button type="submit" id="ask-btn">Ask the panel</button>
+          </div>
+        </form>
+      </section>
+
+      <section class="session hidden" id="session">
+        <aside class="pane">
+          <div class="pane-h">Question</div>
+          <pre id="question-view"></pre>
+          <div class="consensus-box" id="consensus-box">
+            <span class="muted">Waiting for the panel</span>
+          </div>
+          <button type="button" class="again-inline hidden" id="again-btn">Ask another</button>
+        </aside>
+        <section class="pane chat-wrap">
+          <div class="pane-h">Panel answers</div>
+          <div class="chat" id="chat"></div>
+        </section>
+      </section>
+    </main>
     <script src="{{ url_for('static', filename='script.js') }}"></script>
   </body>
 </html>

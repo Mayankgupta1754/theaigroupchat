@@ -10,6 +10,7 @@ Orchestration mirrors project/sales.ipynb:
 from __future__ import annotations
 
 import asyncio
+import base64
 import logging
 import os
 import re
@@ -27,12 +28,14 @@ logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ai-group-chat")
 
 ROOT = Path(__file__).resolve().parent
+MAX_IMAGE_BYTES = 4 * 1024 * 1024
 
 app = Flask(
     __name__,
     template_folder=str(ROOT / "templates"),
     static_folder=str(ROOT / "static"),
 )
+app.config["MAX_CONTENT_LENGTH"] = MAX_IMAGE_BYTES + 64_000
 
 # Central model map — swap OpenRouter IDs here.
 MODELS: dict[str, str] = {
@@ -53,8 +56,17 @@ OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 VALID_OPTIONS = ("A", "B", "C", "D")
 SKIP_TOKENS = {"SKIP", "UNKNOWN", "UNSURE", "PASS", "NONE", "N/A", "NA", "IDK"}
 MAX_QUESTION_CHARS = 8000
+ALLOWED_IMAGE_TYPES = {
+    "image/jpeg",
+    "image/jpg",
+    "image/png",
+    "image/webp",
+    "image/gif",
+}
 PANEL_TIMEOUT_S = 25.0
 JUDGE_TIMEOUT_S = 20.0
+EXTRACT_TIMEOUT_S = 30.0
+VISION_MODEL = "openai/gpt-4o-mini"
 
 SOLVER_SYSTEM = (
     "You solve multiple-choice questions. "
@@ -77,6 +89,14 @@ JUDGE_SYSTEM = (
     "Output exactly two lines: "
     "line 1 is A, B, C, D, or SKIP; "
     "line 2 is one short sentence (max 18 words) explaining why."
+)
+
+EXTRACT_SYSTEM = (
+    "You transcribe exam questions from photos. "
+    "Copy the question stem and every option exactly, including letters A–D. "
+    "Keep the original wording, numbers, and punctuation. "
+    "Do not answer the question. Do not add headings, markdown, or commentary. "
+    "If the image is not a question, output SKIP."
 )
 
 
@@ -222,6 +242,54 @@ async def call_model(
         }
 
 
+def _read_image_upload():
+    file = request.files.get("image")
+    if file is None or not file.filename:
+        return None, None
+    mime = (file.mimetype or "").lower()
+    if mime not in ALLOWED_IMAGE_TYPES:
+        raise ValueError("Please upload a JPG, PNG, WEBP, or GIF image.")
+    data = file.read()
+    if not data:
+        raise ValueError("The uploaded image was empty.")
+    if len(data) > MAX_IMAGE_BYTES:
+        raise ValueError("Image is too large. Keep it under 4 MB.")
+    if mime == "image/jpg":
+        mime = "image/jpeg"
+    return data, mime
+
+
+async def extract_question_from_image(client: AsyncOpenAI, image_bytes: bytes, mime: str) -> str:
+    data_url = f"data:{mime};base64,{base64.b64encode(image_bytes).decode('ascii')}"
+    response = await asyncio.wait_for(
+        client.chat.completions.create(
+            model=VISION_MODEL,
+            messages=[
+                {"role": "system", "content": EXTRACT_SYSTEM},
+                {
+                    "role": "user",
+                    "content": [
+                        {
+                            "type": "text",
+                            "text": "Transcribe the multiple-choice question from this image.",
+                        },
+                        {"type": "image_url", "image_url": {"url": data_url}},
+                    ],
+                },
+            ],
+            temperature=0,
+            max_tokens=1200,
+        ),
+        timeout=EXTRACT_TIMEOUT_S,
+    )
+    text = (response.choices[0].message.content or "").strip()
+    if not text or text.upper().startswith("SKIP"):
+        raise ValueError("Could not read a question from that image.")
+    if len(text) > MAX_QUESTION_CHARS:
+        raise ValueError("The transcribed question is too long.")
+    return text
+
+
 async def run_panel(question: str) -> dict:
     client = _client()
     tasks = [
@@ -297,15 +365,57 @@ def health():
     return jsonify({"ok": True, "app": "the-ai-group-chat"})
 
 
+@app.errorhandler(413)
+def too_large(_error):
+    return jsonify({"error": "Image is too large. Keep it under 4 MB."}), 413
+
+
+@app.post("/api/parse-image")
+def parse_image():
+    if not os.getenv("OPENROUTER_API_KEY"):
+        return jsonify({"error": "Server is missing OPENROUTER_API_KEY."}), 500
+    try:
+        image_bytes, mime = _read_image_upload()
+        if not image_bytes:
+            return jsonify({"error": "Upload an image of the question."}), 400
+        question = asyncio.run(extract_question_from_image(_client(), image_bytes, mime))
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except RuntimeError as exc:
+        logger.exception("Image parse failed")
+        return jsonify({"error": str(exc)}), 500
+    except Exception:
+        logger.exception("Image parse failed")
+        return jsonify({"error": "Could not read that image. Try a clearer photo."}), 500
+    return jsonify({"question": question})
+
+
 @app.post("/api/solve")
 def solve():
     if not os.getenv("OPENROUTER_API_KEY"):
         return jsonify({"error": "Server is missing OPENROUTER_API_KEY."}), 500
 
-    payload = request.get_json(silent=True) or {}
-    question = (payload.get("question") or "").strip()
+    question = ""
+    try:
+        if request.content_type and "multipart/form-data" in request.content_type:
+            question = (request.form.get("question") or "").strip()
+            image_bytes, mime = _read_image_upload()
+            if image_bytes and not question:
+                question = asyncio.run(extract_question_from_image(_client(), image_bytes, mime))
+        else:
+            payload = request.get_json(silent=True) or {}
+            question = (payload.get("question") or "").strip()
+    except ValueError as exc:
+        return jsonify({"error": str(exc)}), 400
+    except RuntimeError as exc:
+        logger.exception("Solve failed")
+        return jsonify({"error": str(exc)}), 500
+    except Exception:
+        logger.exception("Image parse failed")
+        return jsonify({"error": "Could not read that image. Try a clearer photo."}), 500
+
     if not question:
-        return jsonify({"error": "Paste a multiple-choice question."}), 400
+        return jsonify({"error": "Paste a question or upload a photo of one."}), 400
     if len(question) > MAX_QUESTION_CHARS:
         return jsonify({"error": "Question is too long."}), 400
 
