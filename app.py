@@ -84,24 +84,6 @@ SPLIT_TIMEOUT_S = 25.0
 VISION_MODEL = "openai/gpt-4o-mini"
 
 ANSWER_SOLVER_SYSTEM = (
-   SOLVER_SYSTEM_PROMPT = (
-    "You are a careful and reliable question-solving assistant. "
-    "Solve the given question using the information provided. "
-    "The question may be a single-correct MCQ, multiple-correct MCQ, numerical, integer, "
-    "true/false, or another short-answer question. "
-    "Reason carefully before answering, and do not guess when the answer cannot be determined. "
-    "For MCQs, select only the option(s) supported by the question. "
-    "For numerical or integer questions, provide the exact answer rather than SKIP. "
-    "If the input is not a valid question, is incomplete, unreadable, or cannot be solved reliably, reply SKIP. "
-    "Do not answer a different question or invent missing information. "
-    "Your response must contain exactly two lines. "
-    "Line 1 must be: ANSWER: followed by A, B, C, D, a comma-separated option set such as A,C, "
-    "a numerical/integer answer, or SKIP. "
-    "Line 2 must contain one concise sentence explaining the reasoning in no more than 18 words."
-)
-)
-
-SOLVER_SYSTEM_PROMPT = (
     "You are a highly reliable general-purpose question-solving assistant. "
     "Solve the user's question accurately using only the information provided. "
     "The question may be a single-correct MCQ, multiple-correct MCQ, numerical, integer, "
@@ -250,6 +232,7 @@ SPLIT_SYSTEM = (
     "If no valid question can be identified, return:\n"
     "{\"questions\": []}"
 )
+
 
 def _client() -> AsyncOpenAI:
     api_key = os.getenv("OPENROUTER_API_KEY")
