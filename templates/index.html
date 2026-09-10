@@ -32,44 +32,66 @@
 
     <main>
       <section class="composer" id="composer">
-        <p class="eyebrow">Multiple-choice solver</p>
-        <h1>Ask a question, or upload a photo of one.</h1>
+        <p class="eyebrow">Exam panel</p>
+        <h1>Ask, upload, or capture a question.</h1>
         <p class="lede">
-          Four models answer on their own. A host reviews the panel and returns a final choice.
+          Four models answer on their own. Use Answer only for a letter or value, or Solve for a full method.
         </p>
 
         <form id="mcq-form" class="card">
+          <div class="mode-toggle" role="radiogroup" aria-label="Response mode">
+            <label class="mode-opt">
+              <input type="radio" name="mode" value="answer" checked />
+              <span class="mode-copy">
+                <strong>Answer only</strong>
+                <small>A, B, C, D or a one-line value</small>
+              </span>
+            </label>
+            <label class="mode-opt">
+              <input type="radio" name="mode" value="solve" />
+              <span class="mode-copy">
+                <strong>Solve</strong>
+                <small>Step-by-step method and final answer</small>
+              </span>
+            </label>
+          </div>
+
           <label class="field-label" for="question">Question</label>
           <textarea
             id="question"
             spellcheck="true"
-            placeholder="Which data structure follows FIFO?
+            placeholder="Paste one question, or several. Numericals are fine.
 
-A. Stack
-B. Queue
-C. Tree
-D. Graph"
+A particle starts from rest…
+
+A. 2 m/s
+B. 4 m/s
+C. 6 m/s
+D. 8 m/s"
           ></textarea>
 
           <div class="upload-row">
-            <div class="dropzone" id="dropzone">
-              <input
-                id="image-input"
-                type="file"
-                accept="image/jpeg,image/png,image/webp,image/gif"
-                hidden
-              />
-              <div class="dropzone-copy" id="dropzone-copy">
-                <strong>Upload a photo</strong>
-                <span>JPG, PNG, or WEBP · up to 4 MB</span>
-              </div>
-              <div class="preview hidden" id="image-preview">
-                <img id="preview-img" alt="Uploaded question" />
-                <div class="preview-meta">
-                  <span id="preview-name">Photo attached</span>
-                  <button type="button" class="linkish" id="clear-image">Remove</button>
+            <div class="media-actions">
+              <div class="dropzone" id="dropzone">
+                <input
+                  id="image-input"
+                  type="file"
+                  accept="image/jpeg,image/png,image/webp,image/gif"
+                  hidden
+                />
+                <div class="dropzone-copy" id="dropzone-copy">
+                  <strong>Upload a photo</strong>
+                  <span>JPG, PNG, or WEBP · up to 4 MB</span>
+                </div>
+                <div class="preview hidden" id="image-preview">
+                  <img id="preview-img" alt="Uploaded question" />
+                  <div class="preview-meta">
+                    <span id="preview-name">Photo attached</span>
+                    <button type="button" class="linkish" id="clear-image">Remove</button>
+                  </div>
                 </div>
               </div>
+              <button type="button" class="secondary" id="camera-btn">Use camera</button>
             </div>
             <p class="hint" id="upload-hint">We’ll transcribe the image into the box above so you can edit it before asking.</p>
           </div>
@@ -83,6 +105,7 @@ D. Graph"
       <section class="session hidden" id="session">
         <aside class="pane">
           <div class="pane-h">Question</div>
+          <div class="q-nav hidden" id="q-nav"></div>
           <pre id="question-view"></pre>
           <div class="consensus-box" id="consensus-box">
             <span class="muted">Waiting for the panel</span>
@@ -95,6 +118,20 @@ D. Graph"
         </section>
       </section>
     </main>
+
+    <div class="modal hidden" id="camera-modal" role="dialog" aria-modal="true" aria-labelledby="camera-title">
+      <div class="modal-card">
+        <div class="modal-h">
+          <h2 id="camera-title">Live capture</h2>
+          <button type="button" class="linkish" id="camera-cancel">Close</button>
+        </div>
+        <video id="camera-video" autoplay playsinline muted></video>
+        <p class="hint" id="camera-hint">Point the camera at the question, then capture.</p>
+        <div class="modal-actions">
+          <button type="button" id="shutter-btn">Capture photo</button>
+        </div>
+      </div>
+    </div>
     <script src="{{ url_for('static', filename='script.js') }}"></script>
   </body>
 </html>
