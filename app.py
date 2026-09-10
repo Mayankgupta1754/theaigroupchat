@@ -1,14 +1,4 @@
-"""
-THE AI GROUP CHAT — multi-LLM panel + host/judge.
-
-Orchestration:
-  1) split pasted/photo text into individual questions
-  2) asyncio.gather(...) — one independent call per panel model
-  3) one host/judge call per question
-"""
-
 from __future__ import annotations
-
 import asyncio
 import base64
 import json
@@ -18,27 +8,49 @@ import re
 import time
 from collections import Counter
 from pathlib import Path
-
 from dotenv import load_dotenv
 from flask import Flask, jsonify, render_template, request, send_from_directory
 from openai import AsyncOpenAI
-
+"""
+| Import                | Main purpose                          |
+| --------------------- | ------------------------------------- |
+| `annotations`         | Better type hints                     |
+| `asyncio`             | Run async operations concurrently     |
+| `base64`              | Encode images/files as text           |
+| `json`                | Work with JSON/API data               |
+| `logging`             | Application/debug logs                |
+| `os`                  | Environment variables & OS operations |
+| `re`                  | Pattern matching/text extraction      |
+| `time`                | Timing and timestamps                 |
+| `Counter`             | Count votes/results                   |
+| `Path`                | Work with files/folders               |
+| `load_dotenv`         | Load `.env` variables                 |
+| `Flask`               | Create web server                     |
+| `jsonify`             | Return JSON from Flask                |
+| `render_template`     | Serve HTML pages                      |
+| `request`             | Receive user input/files              |
+| `send_from_directory` | Serve files                           |
+| `AsyncOpenAI`         | Make asynchronous OpenAI API calls    |
+"""
+# Load environment variables from .env file
 load_dotenv(override=True)
 
+# Configure logging
 logging.basicConfig(level=logging.INFO)
 logger = logging.getLogger("ai-group-chat")
-
+# Define the root directory of the application
 ROOT = Path(__file__).resolve().parent
+# Define the maximum image size in bytes
 MAX_IMAGE_BYTES = 4 * 1024 * 1024
-
+# Create the Flask application
 app = Flask(
     __name__,
     template_folder=str(ROOT / "templates"),
     static_folder=str(ROOT / "static"),
 )
+# Configure the maximum content length for file uploads
 app.config["MAX_CONTENT_LENGTH"] = MAX_IMAGE_BYTES + 64_000
-
-# Central model map — swap OpenRouter IDs here.
+# Define the models to use
 MODELS: dict[str, str] = {
     "GPT": "openai/gpt-4o-mini",
     "Claude": "anthropic/claude-haiku-4.5",
@@ -46,9 +58,10 @@ MODELS: dict[str, str] = {
     "DeepSeek": "deepseek/deepseek-chat",
 }
 
-JUDGE_NAME = "HOST"
+# Define the judge name and model
+JUDGE_NAME = "Judge"
 JUDGE_MODEL = "openai/gpt-4o-mini"
-JUDGE_SOLVE_MODEL = "google/gemini-2.5-flash"
+JUDGE_SOLVE_MODEL = "openai/gpt-4o-mini"
 
 OPENROUTER_BASE_URL = "https://openrouter.ai/api/v1"
 VALID_OPTIONS = ("A", "B", "C", "D")
@@ -71,71 +84,172 @@ SPLIT_TIMEOUT_S = 25.0
 VISION_MODEL = "openai/gpt-4o-mini"
 
 ANSWER_SOLVER_SYSTEM = (
-    "You solve JEE Main/Advanced and similar exam questions: "
-    "single-correct MCQ, multi-correct, numerical, integer, or one-line answers. "
-    "Do the work carefully. Numerical and integer answers are valid — do not skip them. "
-    "If the input is not a question, or you cannot solve it, reply SKIP. "
-    "Do not guess wildly. Do not answer a different question. "
-    "Output exactly two lines: "
-    "line 1 is ANSWER: followed by A, B, C, D, a letter set like A,C, a number, or SKIP; "
-    "line 2 is one short sentence (max 18 words) explaining why."
+   SOLVER_SYSTEM_PROMPT = (
+    "You are a careful and reliable question-solving assistant. "
+    "Solve the given question using the information provided. "
+    "The question may be a single-correct MCQ, multiple-correct MCQ, numerical, integer, "
+    "true/false, or another short-answer question. "
+    "Reason carefully before answering, and do not guess when the answer cannot be determined. "
+    "For MCQs, select only the option(s) supported by the question. "
+    "For numerical or integer questions, provide the exact answer rather than SKIP. "
+    "If the input is not a valid question, is incomplete, unreadable, or cannot be solved reliably, reply SKIP. "
+    "Do not answer a different question or invent missing information. "
+    "Your response must contain exactly two lines. "
+    "Line 1 must be: ANSWER: followed by A, B, C, D, a comma-separated option set such as A,C, "
+    "a numerical/integer answer, or SKIP. "
+    "Line 2 must contain one concise sentence explaining the reasoning in no more than 18 words."
 )
+)
+
+SOLVER_SYSTEM_PROMPT = (
+    "You are a highly reliable general-purpose question-solving assistant. "
+    "Solve the user's question accurately using only the information provided. "
+    "The question may be a single-correct MCQ, multiple-correct MCQ, numerical, integer, "
+    "true/false, reasoning, quantitative, scientific, technical, or short-answer problem. "
+    "First understand exactly what is being asked, identify the relevant information, "
+    "and reason through the problem carefully before selecting or calculating the answer. "
+    "For multiple-choice questions, evaluate the options against the question rather than "
+    "assuming that one option must be correct. For multiple-correct questions, select every "
+    "option that is independently correct. For numerical and integer questions, calculate "
+    "the answer directly and provide the numerical result. "
+    "Do not guess, do not invent missing information, and do not answer a different question. "
+    "If the question is incomplete, corrupted, unreadable, contradictory, or genuinely "
+    "cannot be solved from the information provided, return SKIP. "
+    "Do not return SKIP merely because the problem is difficult or requires substantial reasoning. "
+    "Your response must contain exactly two lines. "
+    "Line 1 must begin with 'ANSWER:' followed by the final answer. "
+    "For MCQs, use the option label(s), such as A or A,C. "
+    "For numerical or integer questions, provide the numerical answer. "
+    "If no reliable answer can be determined, use SKIP. "
+    "Line 2 must contain one concise sentence explaining the key reason for the answer, "
+    "with a maximum of 18 words."
+)
+
 
 SOLVE_SOLVER_SYSTEM = (
-    "You are an expert JEE Advanced tutor in Physics, Chemistry, and Mathematics. "
-    "Solve the given question completely. It may be MCQ, multi-correct, numerical, or integer type. "
-    "Show the method a serious student needs: known data, principle/formula, algebra, "
-    "substitution, and the boxed final answer with units if relevant. "
-    "Write every formula as LaTeX inside $...$ or $$...$$, for example $\\frac{a}{b}$ and $v = u + at$. "
-    "Do not skip because it is hard or because it is not A/B/C/D. "
-    "If it is truly unsolvable from the given data, reply SKIP. "
-    "Output in this format:\n"
+    "You are an expert problem-solving tutor capable of solving challenging questions "
+    "across mathematics, physics, chemistry, computer science, aptitude, reasoning, "
+    "and other academic or technical subjects. "
+    "Solve the given problem completely and rigorously. "
+    "The problem may be a single-correct MCQ, multiple-correct MCQ, numerical, integer, "
+    "short-answer, or multi-step problem. "
+    "Begin by identifying the relevant information and what must be determined. "
+    "Then select the appropriate concepts, principles, equations, algorithms, or formulas. "
+    "Show the reasoning in a logical sequence, including the necessary setup, substitutions, "
+    "calculations, simplifications, and verification of the result. "
+    "For multiple-choice questions, evaluate the options carefully and explain why the "
+    "selected option or options satisfy the question. "
+    "For numerical or integer problems, calculate the final value explicitly and include "
+    "units when they are relevant. "
+    "Do not skip a problem merely because it is difficult, lengthy, unfamiliar, or not an A/B/C/D MCQ. "
+    "Do not guess or invent facts, equations, values, diagrams, or assumptions that are not justified. "
+    "If an assumption is genuinely necessary, state it clearly and use only reasonable assumptions "
+    "supported by the problem. "
+    "If the problem is genuinely impossible to solve from the information provided, return SKIP. "
+    "Write mathematical expressions and formulas using LaTeX inside $...$ or $$...$$. "
+    "For example, use $\\frac{a}{b}$, $v = u + at$, or $$x = \\frac{-b \\pm \\sqrt{b^2-4ac}}{2a}$$. "
+    "Keep the solution focused on the actual problem and avoid unnecessary exposition. "
+    "End with the final answer clearly identified. "
+    "Output exactly in this format:\n"
     "ANSWER: <final answer only>\n"
     "SOLUTION:\n"
-    "<clear step-by-step solution>"
+    "<clear, rigorous, step-by-step solution>"
 )
+
 
 ANSWER_JUDGE_SYSTEM = (
-    "You independently solve the exam question (MCQ, numerical, or integer). "
-    "Treat panel answers as optional evidence. Ignore guesses. "
-    "Do not follow the majority unless it matches your own reasoning. "
-    "Numerical answers are valid. If you are not reasonably sure, reply SKIP. "
-    "Output exactly two lines: "
-    "line 1 is ANSWER: followed by the final answer or SKIP; "
-    "line 2 is one short sentence (max 18 words) explaining why."
+    "You are the final answer judge in a multi-model question-solving system. "
+    "Your task is to determine the most accurate answer to the given question. "
+    "Solve the question independently before considering the candidate answers from other models. "
+    "Treat the candidate answers only as supporting evidence, never as authoritative truth. "
+    "Do not select an answer merely because it has majority support. "
+    "If candidates disagree, identify the disagreement and determine which answer is actually "
+    "supported by the question and correct reasoning. "
+    "Check calculations, assumptions, option interpretation, units, and logical consistency. "
+    "For multiple-correct questions, verify each selected option independently. "
+    "For numerical and integer questions, verify the numerical result directly. "
+    "Do not be influenced by confident wording, long explanations, or the number of models "
+    "supporting an answer. A single well-reasoned answer may be correct even when the majority "
+    "is wrong. "
+    "Do not guess. If the question is incomplete, ambiguous, corrupted, or you cannot determine "
+    "a reliable answer after careful analysis, return SKIP. "
+    "Your response must contain exactly two lines. "
+    "Line 1 must begin with 'ANSWER:' followed by the final answer or SKIP. "
+    "Line 2 must contain one concise sentence, no more than 18 words, explaining the decisive reason."
 )
+
 
 SOLVE_JUDGE_SYSTEM = (
-    "You independently solve the exam question as a JEE Advanced tutor. "
-    "Analyze first. Treat panel answers as optional evidence and ignore wrong ones. "
-    "Write a complete, correct method: setup, equations, steps, and final answer. "
-    "Write every formula as LaTeX inside $...$ or $$...$$, for example $\\frac{a}{b}$. "
-    "If the panel disagrees, say which approach is right and why. "
-    "Output in this format:\n"
+    "You are the final expert judge for a multi-model question-solving system. "
+    "Independently solve and verify the given question before using any candidate solutions as evidence. "
+    "The problem may involve mathematics, physics, chemistry, computer science, aptitude, reasoning, "
+    "or another academic or technical domain. "
+    "Do not assume that the majority answer is correct. Treat every candidate solution as potentially "
+    "wrong and verify its reasoning, calculations, assumptions, and interpretation of the question. "
+    "When candidate solutions disagree, determine precisely where they differ and establish which "
+    "approach is mathematically, scientifically, or logically valid. "
+    "Pay particular attention to hidden assumptions, arithmetic errors, incorrect formulas, "
+    "units, boundary conditions, option wording, and incomplete reasoning. "
+    "For multiple-correct questions, evaluate every option independently. "
+    "For numerical or integer questions, independently recompute the result. "
+    "Use the candidate solutions as useful evidence, but never copy an answer without verification. "
+    "If the question cannot be solved reliably because required information is missing, corrupted, "
+    "or genuinely ambiguous, return SKIP. "
+    "Otherwise provide a rigorous, self-contained solution that another expert could verify. "
+    "Write all mathematical expressions and formulas using LaTeX inside $...$ or $$...$$. "
+    "Include the necessary setup, equations, reasoning, calculations, and final verification. "
+    "Keep the explanation focused and avoid irrelevant commentary. "
+    "Output exactly in this format:\n"
     "ANSWER: <final answer only>\n"
     "SOLUTION:\n"
-    "<detailed step-by-step solution>"
+    "<detailed, rigorous, step-by-step solution>"
 )
+
 
 EXTRACT_SYSTEM = (
-    "You transcribe exam questions from photos, including JEE numericals and multi-question pages. "
-    "Copy every question stem, given data, and options exactly. "
-    "Keep numbers, units, exponents, and punctuation. "
-    "If there are several questions, separate them with a line that contains only <<<Q>>>. "
-    "If a common passage has more than one question, copy the passage into each block. "
-    "Do not answer. Do not add commentary. "
-    "If the image is not a question, output SKIP."
+    "You are a highly accurate document and image transcription assistant for question papers. "
+    "Your task is to extract questions exactly as they appear in the provided image or document. "
+    "Do not solve, interpret, summarize, correct, rewrite, or improve the questions. "
+    "Preserve every question's wording, numbers, symbols, mathematical expressions, units, "
+    "option labels, answer choices, punctuation, and relevant formatting as faithfully as possible. "
+    "Pay special attention to decimal points, negative signs, exponents, fractions, superscripts, "
+    "subscripts, variables, units, percentages, inequalities, and option labels because small "
+    "transcription errors can change the meaning of a question. "
+    "If the page contains multiple questions, separate them using a line containing exactly <<<Q>>>. "
+    "If a common passage, table, diagram description, or set of instructions applies to multiple "
+    "questions, include the required shared context in every corresponding question block so each "
+    "question remains understandable on its own. "
+    "Preserve sub-parts such as (a), (b), and (c) together when they form one question. "
+    "Do not add answers, explanations, commentary, headings, or assumptions. "
+    "If a portion of the text is genuinely unreadable, do not invent it; preserve what can be read "
+    "and indicate the unreadable portion as [UNREADABLE]. "
+    "If the provided image or document does not contain a recognizable question or question paper, "
+    "output SKIP."
 )
+
 
 SPLIT_SYSTEM = (
-    "Split exam paper text into individual questions. "
-    "Return ONLY JSON: {\"questions\": [\"...\", \"...\"]}. "
-    "Each string is one full question including options and data. "
-    "If a passage has multiple questions, copy the passage into each. "
-    "Keep (a)(b)(c) sub-parts together when they belong to one question. "
-    "If there is only one question, return a one-element array. Do not solve."
+    "You are a question-paper parsing assistant. "
+    "Convert the provided exam or document text into a list of individual, self-contained questions. "
+    "Do not solve, answer, summarize, rewrite, or correct any question. "
+    "Preserve the original wording, numerical values, units, mathematical expressions, options, "
+    "instructions, and relevant context as faithfully as possible. "
+    "Each array element must contain exactly one complete question together with all information "
+    "needed to answer it. "
+    "If a common passage, paragraph, table, or set of instructions applies to multiple questions, "
+    "repeat that shared context inside every relevant question so each returned question can stand alone. "
+    "Keep sub-parts together when they belong to the same question. "
+    "Do not incorrectly split a single multi-part problem into separate questions. "
+    "Do not merge independent questions merely because they share a topic. "
+    "Preserve answer choices with their corresponding question. "
+    "Return ONLY valid JSON in exactly this structure:\n"
+    "{\"questions\": [\"question 1\", \"question 2\"]}\n"
+    "Do not wrap the JSON in Markdown code fences. "
+    "Do not include any text before or after the JSON. "
+    "If there is only one question, return a one-element array. "
+    "If no valid question can be identified, return:\n"
+    "{\"questions\": []}"
 )
-
 
 def _client() -> AsyncOpenAI:
     api_key = os.getenv("OPENROUTER_API_KEY")
