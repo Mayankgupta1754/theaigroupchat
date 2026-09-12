@@ -20,7 +20,7 @@
     <header class="toolbar">
       <div class="brand">
         <h1 class="brand-name">The AI Group Chat</h1>
-        <p class="credit">Made by Mayank Gupta</p>
+        <p class="credit">by Mayank Gupta</p>
       </div>
       <div class="mode-toggle" role="radiogroup" aria-label="Response mode">
         <label class="mode-opt">
@@ -72,8 +72,10 @@
 
       <section class="session hidden" id="session">
         <aside class="pane">
-          <div class="pane-h">Question</div>
-          <div class="q-nav hidden" id="q-nav"></div>
+          <div class="pane-h question-head">
+            <span>Question</span>
+            <nav class="q-nav hidden" id="q-nav" aria-label="Questions"></nav>
+          </div>
           <div id="question-view"></div>
           <div class="consensus-box" id="consensus-box">
             <span class="muted">Waiting</span>

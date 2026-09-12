@@ -54,18 +54,20 @@ function escapeHtml(value) {
     .replace(/"/g, "&quot;");
 }
 
-const MATH_CHUNK = /\$\$[\s\S]+?\$\$|\$(?:\\\$|[^$])+\$|\\\[[\s\S]+?\\\]|\\\([\s\S]+?\\\)/g;
+const DELIMITED_MATH =
+  /\$\$([\s\S]+?)\$\$|\$((?:\\\$|[^$])+?)\$|\\\[([\s\S]+?)\\\]|\\\(([\s\S]+?)\\\)|\\begin\{([a-zA-Z*]+)\}([\s\S]*?)\\end\{\5\}/g;
+
 const KATEX_OPTS = {
-  delimiters: [
-    { left: "$$", right: "$$", display: true },
-    { left: "\\[", right: "\\]", display: true },
-    { left: "$", right: "$", display: false },
-    { left: "\\(", right: "\\)", display: false },
-  ],
   throwOnError: false,
   strict: "ignore",
-  ignoredTags: ["script", "noscript", "style", "textarea", "code"],
+  trust: false,
 };
+
+function softenLatex(text) {
+  return String(text || "")
+    .replace(/```(?:latex|tex|math)?\s*([\s\S]*?)```/gi, (_, body) => `$$${body}$$`)
+    .replace(/\\\\(?=[a-zA-Z]+|[\[{])/g, "\\");
+}
 
 function takeBrace(src, start) {
   if (src[start] !== "{") return start;
@@ -82,7 +84,7 @@ function takeBrace(src, start) {
 
 function takeLatexExpr(src, start) {
   if (src[start] !== "\\") return null;
-  const cmd = src.slice(start).match(/^\\[a-zA-Z]+/);
+  const cmd = src.slice(start).match(/^\\[a-zA-Z]+\*?/);
   let end;
   if (cmd) {
     end = start + cmd[0].length;
@@ -95,7 +97,17 @@ function takeLatexExpr(src, start) {
     const close = src.indexOf("]", end);
     if (close >= 0) end = close + 1;
   }
-  if ("()|.".includes(src[end] || "")) end += 1;
+  const name = cmd ? cmd[0].slice(1) : "";
+  if (/^(?:left|right|bigl|bigr|Bigl|Bigr|biggl|biggr|Biggl|Biggr)$/.test(name)) {
+    if (src[end] === "\\") {
+      const delim = src.slice(end).match(/^\\(?:[{}|]|[a-zA-Z]+)/);
+      end += delim ? delim[0].length : 1;
+    } else if (end < src.length) {
+      end += 1;
+    }
+  } else if ("()|.".includes(src[end] || "")) {
+    end += 1;
+  }
   let groups = 0;
   while (src[end] === "{" && groups < 4) {
     end = takeBrace(src, end);
@@ -114,54 +126,69 @@ function takeLatexExpr(src, start) {
   return end;
 }
 
-function wrapBareLine(line) {
+function wrapBareLatex(text) {
   let i = 0;
   let out = "";
-  while (i < line.length) {
-    if (line[i] === "\\") {
-      const end = takeLatexExpr(line, i);
+  while (i < text.length) {
+    if (text[i] === "\\") {
+      const end = takeLatexExpr(text, i);
       if (end && end > i + 1) {
-        out += `$${line.slice(i, end)}$`;
+        out += `$${text.slice(i, end)}$`;
         i = end;
         continue;
       }
     }
-    out += line[i];
+    out += text[i];
     i += 1;
   }
   return out;
 }
 
-function wrapUndelimited(text) {
-  const src = String(text);
-  const pieces = [];
+function katexHtml(src, display) {
+  const body = src.replace(/^\s+|\s+$/g, "");
+  if (!body || typeof katex === "undefined" || typeof katex.renderToString !== "function") {
+    return escapeHtml(src);
+  }
+  try {
+    return katex.renderToString(body, { ...KATEX_OPTS, displayMode: Boolean(display) });
+  } catch (error) {
+    console.warn("KaTeX failed", error);
+    return `<span class="math-fallback">${escapeHtml(src)}</span>`;
+  }
+}
+
+function textToHtml(text) {
+  return escapeHtml(text).replace(/\n/g, "<br>");
+}
+
+function splitDelimited(text) {
+  const parts = [];
   let last = 0;
-  src.replace(MATH_CHUNK, (chunk, offset) => {
-    pieces.push(wrapBareLine(src.slice(last, offset)));
-    pieces.push(chunk);
-    last = offset + chunk.length;
-    return chunk;
+  const src = String(text);
+  src.replace(DELIMITED_MATH, (match, dd, d, brack, paren, env, envBody, offset) => {
+    if (offset > last) parts.push({ type: "text", value: src.slice(last, offset) });
+    if (env) {
+      parts.push({ type: "math", display: true, value: `\\begin{${env}}${envBody}\\end{${env}}` });
+    } else {
+      const value = dd || d || brack || paren || "";
+      parts.push({ type: "math", display: Boolean(dd || brack), value });
+    }
+    last = offset + match.length;
+    return match;
   });
-  pieces.push(wrapBareLine(src.slice(last)));
-  return pieces.join("");
+  if (last < src.length) parts.push({ type: "text", value: src.slice(last) });
+  return parts.length ? parts : [{ type: "text", value: src }];
 }
 
 function formatMath(text) {
-  return escapeHtml(wrapUndelimited(text || ""));
-}
-
-function typeset(root) {
-  if (!root || typeof renderMathInElement !== "function") return;
-  try {
-    renderMathInElement(root, KATEX_OPTS);
-  } catch (error) {
-    console.warn("Math render skipped", error);
-  }
+  return splitDelimited(softenLatex(text))
+    .flatMap((part) => (part.type === "math" ? [part] : splitDelimited(wrapBareLatex(part.value))))
+    .map((part) => (part.type === "math" ? katexHtml(part.value, part.display) : textToHtml(part.value)))
+    .join("");
 }
 
 function setMathContent(el, text) {
   el.innerHTML = formatMath(text || "");
-  typeset(el);
 }
 
 function addMessage(html, extraClass = "") {
@@ -204,7 +231,6 @@ function fillModelCard(index, model, mode) {
     card.innerHTML = `<div class="msg-h"><span class="handle">${model.name}</span><span>${model.time}s</span></div>
        <div class="answer">${formatMath(model.answer)}</div>
        ${body}`;
-    typeset(card);
   } else if (skipped) {
     card.innerHTML = `<div class="msg-h"><span class="handle">${model.name}</span></div>
        <div class="answer">SKIP</div>
@@ -256,7 +282,6 @@ async function playItem(result, mode) {
        <div class="detail">${agree} / ${total}${mode === "answer" && judgeReason ? ` · ${formatMath(judgeReason)}` : ""}</div>
        ${solution}`
     : `<div class="detail">No confident answer</div>${solution}`;
-  typeset(consensusBox);
   againBtn.classList.remove("hidden");
 }
 
