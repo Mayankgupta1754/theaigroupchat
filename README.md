@@ -6,6 +6,16 @@ Paste a question, snap a photo of a paper, or drop in a whole set of MCQs. GPT, 
 
 Built for exam questions, technical problems, and anything where one model’s confidence is not enough.
 
+## Demo
+
+**Desktop — Solve mode.** Paste a problem, watch the panel reason, then read the judge’s worked solution.
+
+![Desktop Solve demo](docs/demo/pc-solve.mp4)
+
+**Mobile — MCQ.** Run an MCQ on a phone: question, four models, consensus, and the final answer.
+
+![Mobile MCQ demo](docs/demo/mobile-mcq.mp4)
+
 ---
 
 ## Why this exists
@@ -148,12 +158,13 @@ The response includes per-model answers and timings, vote counts, judge status, 
 
 ```
 .
-├── app.py              # Flask app, panel, judge, vision, splitting
+├── app.py
 ├── templates/index.html
 ├── static/style.css
 ├── static/script.js
+├── docs/demo/          # PC Solve + mobile MCQ recordings
 ├── requirements.txt
-├── runtime.txt         # python-3.12
+├── runtime.txt
 └── vercel.json
 ```
 
