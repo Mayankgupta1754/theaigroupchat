@@ -287,6 +287,7 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   min-height: 0;
   display: grid;
   grid-template-columns: minmax(280px, 0.9fr) 1.2fr;
+  grid-template-rows: minmax(0, 1fr) auto;
   background: var(--surface);
   border: 1px solid var(--line);
   border-radius: 12px;
@@ -398,9 +399,14 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
 }
 .muted, .detail { color: var(--muted); font-size: 12px; }
 .again-inline {
-  margin: 0 16px 14px;
-  align-self: flex-start;
-  flex-shrink: 0;
+  grid-column: 1 / -1;
+  margin: 0;
+  border: 0;
+  border-top: 1px solid var(--line);
+  border-radius: 0;
+  width: 100%;
+  min-height: 44px;
+  background: var(--surface);
 }
 
 .chat {
@@ -591,25 +597,74 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
     white-space: nowrap;
   }
 
-  .session {
-    grid-template-columns: 1fr;
+  html:has(#session:not(.hidden)),
+  html:has(#session:not(.hidden)) body {
+    height: auto;
+    min-height: 100dvh;
     overflow: auto;
   }
-  .pane + .pane { border-left: 0; border-top: 1px solid var(--line); }
-  .question-head {
-    position: sticky;
-    top: 0;
-    z-index: 2;
-  }
-  .pane:first-child {
-    max-height: 52vh;
-  }
-  .chat-wrap {
-    min-height: 52vh;
+  body:has(#session:not(.hidden)) main {
+    flex: 1 0 auto;
+    min-height: auto;
+    overflow: visible;
   }
 
-  .agree { font-size: 24px; }
-  .answer { font-size: 20px; }
+  .session {
+    display: flex;
+    flex-direction: column;
+    flex: 0 0 auto;
+    min-height: 0;
+    height: auto;
+    overflow: visible;
+  }
+  .pane {
+    flex: 0 0 auto;
+    min-height: 0;
+    overflow: visible;
+  }
+  .pane + .pane { border-left: 0; border-top: 1px solid var(--line); }
+  body:has(#session:not(.hidden)) .toolbar {
+    position: sticky;
+    top: 0;
+    z-index: 4;
+  }
+  .pane:first-child,
+  .chat-wrap {
+    max-height: none;
+    min-height: 0;
+  }
+  #question-view {
+    flex: none;
+    min-height: 0;
+    overflow: visible;
+    font-size: 16px;
+    padding: 16px 14px;
+  }
+  .consensus-box {
+    max-height: none;
+    overflow: visible;
+    padding: 16px 14px 18px;
+  }
+  .chat {
+    flex: none;
+    overflow: visible;
+  }
+  .again-inline {
+    position: sticky;
+    bottom: 0;
+    z-index: 3;
+    padding-bottom: max(10px, env(safe-area-inset-bottom));
+    box-shadow: 0 -8px 20px rgba(28, 28, 26, 0.06);
+  }
+
+  .agree { font-size: 26px; }
+  .answer { font-size: 22px; }
+  .host-solution,
+  .solution,
+  .why {
+    font-size: 15px;
+    line-height: 1.6;
+  }
 
   .modal {
     padding: 12px;
