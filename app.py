@@ -323,37 +323,112 @@ def consensus_from(answers: list[str]) -> dict:
     }
 
 
+_NUMBERED_Q = re.compile(
+    r"(?im)^(?:(?:question|q(?:ues(?:tion)?)?|problem|prob|ex(?:ercise)?)\s*[.\-]?\s*\d{1,2}\s*[\).:]?|"
+    r"\(\s*\d{1,2}\s*\)|"
+    r"\[\s*\d{1,2}\s*\]|"
+    r"\d{1,2}(?!\d)\s*[\).:])\s*"
+)
+_OPTIONS_ONLY = re.compile(
+    r"(?is)^(?:[A-D][\).:\-]\s+\S.*(?:\n|$)){2,}$"
+)
+_QUESTION_VERB = re.compile(
+    r"(?im)^\s*(?:find|calculate|solve|evaluate|determine|compute|what|which|how many|prove|show that)\b"
+)
+
+
+def _is_options_only(text: str) -> bool:
+    return bool(_OPTIONS_ONLY.match(text.strip()))
+
+
+def _looks_like_question(text: str) -> bool:
+    blob = text.strip()
+    if len(blob) < 12 or _is_options_only(blob):
+        return False
+    if "?" in blob:
+        return True
+    if _QUESTION_VERB.search(blob) or re.search(
+        r"(?i)\b(?:find|calculate|solve|evaluate|determine|compute|what is|what are|how many)\b",
+        blob,
+    ):
+        return True
+    if re.search(r"(?im)^\s*[A-D][\).:\-]\s+\S", blob) or re.search(
+        r"(?im)\n\s*[A-D][\).:\-]\s+\S", blob
+    ):
+        return True
+    return False
+
+
+def _chunks_from_matches(blob: str, matches: list[re.Match[str]]) -> list[str]:
+    parts: list[str] = []
+    for i, match in enumerate(matches):
+        end = matches[i + 1].start() if i + 1 < len(matches) else len(blob)
+        chunk = blob[match.start() : end].strip()
+        if len(chunk) > 12:
+            parts.append(chunk)
+    return parts
+
+
+def _merge_paragraphs(parts: list[str]) -> list[str]:
+    merged: list[str] = []
+    buffer = ""
+    for part in parts:
+        piece = part.strip()
+        if not piece:
+            continue
+        if merged and _is_options_only(piece):
+            merged[-1] = f"{merged[-1]}\n\n{piece}"
+            continue
+        if _looks_like_question(piece):
+            if buffer:
+                piece = f"{buffer}\n\n{piece}"
+                buffer = ""
+            merged.append(piece)
+        else:
+            buffer = f"{buffer}\n\n{piece}".strip() if buffer else piece
+    if buffer:
+        if merged:
+            merged[-1] = f"{merged[-1]}\n\n{buffer}"
+        else:
+            merged.append(buffer)
+    return merged
+
+
 def split_questions_local(text: str) -> list[str]:
     blob = text.strip()
     if not blob:
         return []
     if "<<<Q>>>" in blob:
-        return [part.strip() for part in blob.split("<<<Q>>>") if part.strip()]
-    pattern = re.compile(
-        r"(?im)^(?:(?:question|q)\s*\.?\s*\d+\s*[\).:]?|\d+\s*[\).])\s+"
-    )
-    matches = list(pattern.finditer(blob))
-    if len(matches) >= 2:
-        parts = []
-        for i, match in enumerate(matches):
-            end = matches[i + 1].start() if i + 1 < len(matches) else len(blob)
-            chunk = blob[match.start():end].strip()
-            if len(chunk) > 12:
-                parts.append(chunk)
+        return [part.strip() for part in blob.split("<<<Q>>>") if part.strip()][:MAX_QUESTIONS]
+
+    numbered = list(_NUMBERED_Q.finditer(blob))
+    if len(numbered) >= 2:
+        parts = _chunks_from_matches(blob, numbered)
         if len(parts) >= 2:
-            return parts
+            return parts[:MAX_QUESTIONS]
+
+    paragraphs = [part.strip() for part in re.split(r"\n\s*\n+", blob) if part.strip()]
+    merged = _merge_paragraphs(paragraphs)
+    question_like = [part for part in merged if _looks_like_question(part)]
+    if len(question_like) >= 2:
+        return merged[:MAX_QUESTIONS]
+
     return [blob]
 
 
 def looks_like_multiple(text: str) -> bool:
-    option_blocks = len(re.findall(r"(?im)(?:^|\n)\s*A[\).\:-]\s+", text))
-    numbered = len(re.findall(r"(?im)^(?:(?:question|q)\s*\.?\s*\d+|\d+\s*[\).])\s+", text))
-    return option_blocks >= 2 or numbered >= 2
+    blob = text.strip()
+    option_blocks = len(re.findall(r"(?im)(?:^|\n)\s*A[\).\:-]\s+\S", blob))
+    numbered = len(_NUMBERED_Q.findall(blob))
+    paragraphs = [part.strip() for part in re.split(r"\n\s*\n+", blob) if part.strip()]
+    question_paras = [part for part in paragraphs if _looks_like_question(part)]
+    return option_blocks >= 2 or numbered >= 2 or len(question_paras) >= 2
 
 
 async def split_questions(client: AsyncOpenAI, text: str) -> list[str]:
     local = split_questions_local(text)
     if len(local) >= 2:
+        logger.info("Split %s questions locally", len(local))
         return local[:MAX_QUESTIONS]
     if not looks_like_multiple(text):
         return local[:1] or [text.strip()]
@@ -374,7 +449,8 @@ async def split_questions(client: AsyncOpenAI, text: str) -> list[str]:
         raw = re.sub(r"^```(?:json)?\s*|\s*```$", "", raw)
         data = json.loads(raw)
         items = [str(item).strip() for item in data.get("questions", []) if str(item).strip()]
-        if items:
+        if len(items) >= 2:
+            logger.info("Split %s questions via model", len(items))
             return items[:MAX_QUESTIONS]
     except Exception:
         logger.exception("Question split failed; using local split")

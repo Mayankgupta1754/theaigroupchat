@@ -150,7 +150,11 @@ function katexHtml(src, display) {
     return escapeHtml(src);
   }
   try {
-    return katex.renderToString(body, { ...KATEX_OPTS, displayMode: Boolean(display) });
+    return katex.renderToString(body, {
+      ...KATEX_OPTS,
+      displayMode: Boolean(display),
+      output: "html",
+    });
   } catch (error) {
     console.warn("KaTeX failed", error);
     return `<span class="math-fallback">${escapeHtml(src)}</span>`;

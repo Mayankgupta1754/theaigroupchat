@@ -364,6 +364,9 @@ button:disabled { opacity: 0.45; cursor: not-allowed; }
   font-size: 1.08em;
   white-space: nowrap;
 }
+.katex-mathml {
+  display: none !important;
+}
 .katex-display {
   display: block;
   margin: 0.65em 0;
