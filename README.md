@@ -8,13 +8,19 @@ Built for exam questions, technical problems, and anything where one model’s c
 
 ## Demo
 
+GitHub README files cannot play `.mp4` inline, so these are looping previews. The full recordings are in [`docs/demo/`](docs/demo).
+
 **Desktop — Solve mode.** Paste a problem, watch the panel reason, then read the judge’s worked solution.
 
-![Desktop Solve demo](docs/demo/pc-solve.mp4)
+<p align="center">
+  <img src="docs/demo/pc-solve.webp" alt="Desktop Solve demo" width="800" />
+</p>
 
 **Mobile — MCQ.** Run an MCQ on a phone: question, four models, consensus, and the final answer.
 
-![Mobile MCQ demo](docs/demo/mobile-mcq.mp4)
+<p align="center">
+  <img src="docs/demo/mobile-mcq.webp" alt="Mobile MCQ demo" width="360" />
+</p>
 
 ---
 
